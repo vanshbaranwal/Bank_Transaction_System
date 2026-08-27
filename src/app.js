@@ -1,7 +1,15 @@
 const express = require("express");
-
+const cookieParser = require("cookie-parser");
+const authRouter = require("./routes/auth.routes.js");
 
 const app = express();
+
+
+app.use(express.json()); // this is used to let the express server read the data coming from req.body
+app.use(cookieParser()); // this is used to set the token into the cookies
+
+app.use("/api/auth", authRouter);
+
 
 
 module.exports = app;
