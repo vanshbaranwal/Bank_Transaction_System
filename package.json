@@ -1,0 +1,32 @@
+{
+  "name": "bank_transaction_system",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "dev": "npx nodemon server.js",
+    "start": "node server.js"
+  },
+  "type": "commonjs",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/vanshbaranwal/Bank_Transaction_System.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/vanshbaranwal/Bank_Transaction_System/issues"
+  },
+  "homepage": "https://github.com/vanshbaranwal/Bank_Transaction_System#readme",
+  "description": "",
+  "dependencies": {
+    "dotenv": "^17.4.2",
+    "express": "^5.2.1",
+    "gitignore": "^0.7.0",
+    "mongoose": "^9.9.4"
+  },
+  "devDependencies": {
+    "@types/node": "^26.4.0"
+  }
+}
