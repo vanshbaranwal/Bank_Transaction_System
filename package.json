@@ -21,6 +21,8 @@
   "homepage": "https://github.com/vanshbaranwal/Bank_Transaction_System#readme",
   "description": "",
   "dependencies": {
+    "bcrypt": "^6.0.0",
+    "bcryptjs": "^3.0.3",
     "dotenv": "^17.4.2",
     "express": "^5.2.1",
     "gitignore": "^0.7.0",
