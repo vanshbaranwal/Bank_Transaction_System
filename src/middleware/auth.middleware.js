@@ -1,4 +1,5 @@
 const userModel = require("../models/user.model.js");
+const tokenBlackListModel = require("../models/blackList.model.js");
 const jwt = require("jsonwebtoken");
 
 
@@ -9,6 +10,14 @@ async function authMiddleware(req, res, next){
     if(!token){
         return res.status(401).json({
             message: "unauthorized access, token is missing",
+        });
+    }
+
+    const isBlackListed = await tokenBlackListModel.findOne({ token });
+
+    if(isBlackListed){
+        return res.status(401).json({
+            message: "unauthorized access, token is invalid"
         });
     }
 
@@ -39,6 +48,14 @@ async function authSystemUserMiddleware(req, res, next){
     if(!token){
         return res.status(401).json({
             message: "unauthorized access, token is missing"
+        });
+    }
+
+    const isBlackListed = await tokenBlackListModel.findOne({ token });
+
+    if(isBlackListed){
+        return res.status(401).json({
+            message: "unauthorized access, token is invalid"
         });
     }
 
