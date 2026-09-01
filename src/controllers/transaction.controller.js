@@ -105,13 +105,13 @@ async function createTransaction(req, res){
     const session = await mongoose.startSession();
     session.startTransaction();
 
-    const transaction = await transactionModel.create({
+    const transaction = new transactionModel({
         fromAccount,
         toAccount,
         amount,
         idempotencyKey,
         status: "PENDING"
-    }, { session });
+    });
 
     // 6. debitledger entry
 
