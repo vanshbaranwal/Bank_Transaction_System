@@ -35,15 +35,22 @@ async function createTransaction(req, res){
 
     const fromUserAccount = await accountModel.findOne({
         _id: fromAccount,
+        user: req.user._id
     });
+
+    if(!fromUserAccount){
+        return res.status(404).json({
+            message: "source account not found or not owned by the authenticated user"
+        });
+    }
 
     const toUserAccount = await accountModel.findOne({
         _id: toAccount,
     });
 
-    if(!fromUserAccount || !toUserAccount){
-        return res.status(400).json({
-            message: "invalid fromAccount or toAccount",
+    if(!toUserAccount){
+        return res.status(404).json({
+            message: "destination account not found",
         });
     }
 
@@ -89,76 +96,93 @@ async function createTransaction(req, res){
             message: "both fromAccount and toAccount must be ACTIVE to process transaction",
         });    
     }
-
-    // 4. derive sender balance from ledger (using aggregation pipeline)
-
-    const balance = await fromUserAccount.getBalance();
-
-    if(balance < amount){
-        return res.status(400).json({
-            message: `insufficient balance. current balance is ${balance}, and the requested amount is ${amount}`
-        });
-    }
     
-
-    // 5. create transaction (PENDING)
+    const session = await mongoose.startSession();
     let transaction;
+
     try {
-    
-        const session = await mongoose.startSession();
-        session.startTransaction();
-    
-        [transaction] = await transactionModel.create([{
-            fromAccount,
-            toAccount,
-            amount,
-            idempotencyKey,
-            status: "PENDING"
-        }], { session });
-    
-        // 6. debitledger entry
-    
-        const debitLedgerEntry = await ledgerModel.create([{
-            account: fromAccount,
-            amount: amount,
-            transaction: transaction._id,
-            type: "DEBIT",
-        }], { session });
-    
-        // doing this to make a 10 second delay between the transaction processing from debit to credit and for testing what happens if we give another request from the same idempotencyKey
-        await new Promise(resolve => setTimeout(resolve, 10 * 1000));
-    
-    
-        // 7. credit ledger entry
-    
-        const creditLedgerEntry = await ledgerModel.create([{
-            account: toAccount,
-            amount: amount,
-            transaction: transaction._id,
-            type: "CREDIT"
-        }], { session });
+        await session.withTransaction(async () => {
+            // lock serializing transfers from this account
+            const lockedFromAccount = await accountModel.findOneAndUpdate(
+                {
+                    _id: fromAccount,
+                    user: req.user._id,
+                    status: "ACTIVE"
+                },
+                {
+                    $inc: { transactionVersion: 1 }
+                },
+                {
+                    session,
+                    new: true
+                }
+            );
+
+            if(!lockedFromAccount){
+                const error = new Error("source account not found, not owned by user, or inactive");
+                error.statusCode = 404;
+                throw error;
+            }
             
-        // 8. mark transaction COMPLETED
+            // 4. derive sender balance from ledger (using aggregation pipeline)
+            const balance = await lockedFromAccount.getBalance(session);
+
+            if(balance < amount){
+                const error = new Error(`insufficient balance. current balance is ${balance}, and the requested amount is ${amount}`);
+                error.statusCode = 400;
+                throw error;
+            }
+
+            // 5. create transaction (PENDING)
         
-        transaction = await transactionModel.findOneAndUpdate(
-            { _id: transaction._id },
-            { status: "COMPLETED" },
-            { 
-                session,
-                new: true   // here new: true tells the mongoose to return the document after the update
-            }  
-        );
-    
-        // 9. commit mongoDB session
+            [transaction] = await transactionModel.create([{
+                fromAccount,
+                toAccount,
+                amount,
+                idempotencyKey,
+                status: "PENDING"
+            }], { session });
         
-        await session.commitTransaction();
-        session.endSession();
+            // 6. debitledger entry
+        
+            const debitLedgerEntry = await ledgerModel.create([{
+                account: fromAccount,
+                amount: amount,
+                transaction: transaction._id,
+                type: "DEBIT",
+            }], { session });
+        
+            // doing this to make a 10 second delay between the transaction processing from debit to credit and for testing what happens if we give another request from the same idempotencyKey
+            await new Promise(resolve => setTimeout(resolve, 10 * 1000));
+                
+            // 7. credit ledger entry
+        
+            const creditLedgerEntry = await ledgerModel.create([{
+                account: toAccount,
+                amount: amount,
+                transaction: transaction._id,
+                type: "CREDIT"
+            }], { session });
+                
+            // 8. mark transaction COMPLETED
+            
+            transaction = await transactionModel.findOneAndUpdate(
+                { _id: transaction._id },
+                { status: "COMPLETED" },
+                { 
+                    session,
+                    new: true   // here new: true tells the mongoose to return the document after the update
+                }  
+            );
+        });
 
     } catch (error) {
-        
-        return res.status(400).json({
-            message: "Transaction processing failed. Please try again."
+        console.error("transaction error: ", error);
+        return res.status(error.statusCode || 400).json({
+            message: error.statusCode ? error.message : "Transaction processing failed. Please try again."
         });
+    } finally{
+        await session.endSession();
     }
 
     // 10. send email notification
